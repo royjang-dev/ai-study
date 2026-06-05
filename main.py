@@ -1,75 +1,75 @@
 import torch
 import torch.nn as nn
+from torchvision.datasets import CIFAR10
+from torchvision import transforms # 이미지 전처리를 위한 torchvision.transforms 모듈을 가져옵니다. 이 모듈은 이미지 데이터를 텐서로 변환하거나 정규화하는 등의 다양한 변환을 제공하여 모델이 데이터를 더 효과적으로 학습할 수 있도록 돕습니다.
+from model import AlexNet
 
-class AlexNet(nn.Module):
-    def __init__(self, num_classes=1000): # 기본 분류 클래스 수는 1000개
-        super().__init__()
+
+def train_model(model, trainloader, criterion, optimizer, device, num_epochs=10):
+    model.train() # 모델을 훈련 모드로 설정합니다. 이는 Dropout과 BatchNorm과 같은 레이어가 훈련 중에 다르게 동작하도록 합니다. 예를 들어, Dropout은 훈련 중에 뉴런을 무작위로 비활성화하지만, 평가 모드에서는 모든 뉴런이 활성화됩니다.
+    for epoch in range(num_epochs):
+        running_loss = 0.0 # 에포크 동안 누적되는 손실 값을 저장하는 변수입니다. 각 배치의 손실을 이 변수에 더하여 에포크 전체의 평균 손실을 계산할 수 있습니다.
+        correct = 0 # 모델이 올바르게 예측한 샘플의 수를 저장하는 변수입니다. 각 배치에서 모델의 예측과 실제 레이블을 비교하여 이 변수를 업데이트합니다.
+        total = 0 # 모델이 예측한 총 샘플 수를 저장하는 변수입니다. 각 배치에서 레이블의 크기를 이 변수에 더하여 에포크 전체의 정확도를 계산할 수 있습니다.
         
-        # 1. 특징 추출부 (Features): 이미지에서 선, 면, 형태 등의 특징을 뽑아냅니다.
-        self.features = nn.Sequential(
-            # 첫 번째 Convolution: 큰 이미지(224x224)를 쪼개어 특징을 찾음
-            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+        for batch_idx, (images, labels) in enumerate(trainloader): # 훈련 데이터 로더에서 배치 단위로 데이터를 가져옵니다. batch_idx는 현재 배치의 인덱스이고, images와 labels는 각각 입력 이미지와 해당 레이블을 포함하는 텐서입니다.
+            images = images.to(device) 
+            labels = labels.to(device)
             
-            # 두 번째 Convolution
-            nn.Conv2d(64, 192, kernel_size=5, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+            # Forward pass
+            outputs = model(images) # 모델에 입력 이미지 배치를 전달하여 예측을 생성합니다. outputs는 모델의 출력 텐서로, 각 클래스에 대한 로짓(logit) 값을 포함합니다. 이 값은 소프트맥스(softmax) 함수를 적용하여 확률로 변환할 수 있습니다.
+            loss = criterion(outputs, labels) # 모델의 출력과 실제 레이블 간의 손실을 계산합니다. criterion은 앞서 정의한 손실 함수(CrossEntropyLoss)로, 모델이 얼마나 잘 예측하는지를 평가합니다. loss는 현재 배치의 손실 값을 나타내는 텐서입니다.
             
-            # 세 번째, 네 번째, 다섯 번째 Convolution (AlexNet의 핵심 깊이)
-            nn.Conv2d(192, 384, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-        )
+            # Backward pass
+            optimizer.zero_grad() # 옵티마이저의 기울기를 초기화합니다. PyTorch에서는 기본적으로 기울기가 누적되므로, 각 배치마다 기울기를 초기화하여 이전 배치의 기울기가 현재 배치에 영향을 미치지 않도록 합니다. optimizer는 앞서 정의한 Adam 옵티마이저입니다.
+            loss.backward() # 손실에 대한 모델의 가중치의 기울기를 계산합니다. 이 단계에서는 역전파(backpropagation)가 수행되어 모델의 가중치가 손실을 줄이는 방향으로 업데이트될 수 있도록 기울기가 계산됩니다.
+            optimizer.step() # 옵티마이저가 모델의 가중치를 업데이트합니다. 이 단계에서는 계산된 기울기를 사용하여 모델의 가중치가 손실을 줄이는 방향으로 조정됩니다. optimizer는 앞서 정의한 Adam 옵티마이저입니다.
+            optimizer.zero_grad() 
+
+            # Statistics 학습 중 손실(loss)과 정확도(accuracy)를 계산하여 출력합니다.
+            running_loss += loss.item() # loss.item()은 현재 배치의 손실 값을 반환합니다. 이를 running_loss에 누적하여 에포크 전체의 평균 손실을 계산할 수 있습니다.
+            _, predicted = torch.max(outputs.data, 1) # predicted = indices 만 사용하겠다는 뜻입니다. (values 필요없음)
+            total += labels.size(0) # labels.size(0)은 현재 배치의 샘플 수를 반환합니다. 이를 total에 누적하여 에포크 전체의 정확도를 계산할 수 있습니다.
+            correct += (predicted == labels).sum().item() # predicted와 labels를 비교하여 모델이 올바르게 예측한 샘플의 수를 계산합니다. (predicted == labels)는 각 샘플에 대해 예측이 실제 레이블과 일치하는지 여부를 나타내는 불리언 텐서를 생성합니다. .sum()은 일치하는 샘플의 수를 계산하고, .item()은 이 값을 Python 숫자로 반환합니다. 이를 correct에 누적하여 에포크 전체의 정확도를 계산할 수 있습니다.
+            
+            if (batch_idx + 1) % 100 == 0: # 100 배치마다 현재 에포크, 배치 인덱스, 그리고 손실 값을 출력합니다. 이렇게 하면 훈련 과정에서 모델이 어떻게 학습되고 있는지 모니터링할 수 있습니다.
+                print(f"Epoch [{epoch+1}/{num_epochs}], Step [{batch_idx+1}/{len(trainloader)}], Loss: {loss.item():.4f}") # 현재 에포크(epoch)와 배치 인덱스(batch_idx), 그리고 손실(loss) 값을 출력합니다. epoch+1과 batch_idx+1을 사용하여 1부터 시작하는 인덱스를 출력합니다. loss.item()은 현재 배치의 손실 값을 반환하며, .4f는 소수점 네 자리까지 출력하도록 형식을 지정합니다.
         
-        # 2. 풀링부: 고차원 데이터를 1차원으로 펼치기 좋게 압축
-        self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
-        
-        # 3. 분류기 (Classifier): 추출된 특징을 바탕으로 최종 무엇인지 정답을 맞힙니다.
-        self.classifier = nn.Sequential(
-            nn.Dropout(), # 과적합 방지를 위해 무작위로 뉴런을 끔
-            nn.Linear(256 * 6 * 6, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, 4096),
-            nn.ReLU(inplace=True),
-            nn.Linear(4096, num_classes), # 최종 예측 클래스 개수로 출력
-        )
+        epoch_loss = running_loss / len(trainloader) # 에포크 전체의 평균 손실을 계산합니다. running_loss는 에포크 동안 누적된 손실 값이며, len(trainloader)는 에포크 동안 처리된 배치 수입니다. 이를 통해 에포크 전체의 평균 손실을 얻을 수 있습니다.
+        epoch_acc = 100 * correct / total # 에포크 전체의 정확도를 계산합니다. correct는 모델이 올바르게 예측한 샘플의 수이고, total은 모델이 예측한 총 샘플 수입니다. 이를 100으로 곱하여 백분율로 표현합니다.
+        print(f"Epoch [{epoch+1}/{num_epochs}] - Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}%\n") # 에포크 전체의 평균 손실과 정확도를 출력합니다. epoch+1을 사용하여 1부터 시작하는 인덱스를 출력합니다. epoch_loss는 에포크 전체의 평균 손실 값이며, .4f는 소수점 네 자리까지 출력하도록 형식을 지정합니다. epoch_acc는 에포크 전체의 정확도 백분율이며, .2f는 소수점 두 자리까지 출력하도록 형식을 지정합니다.
 
-    def forward(self, x):
-        print("input:", x.shape) # 입력 이미지의 모양을 출력하여 확인
 
-        # 데이터가 모델을 통과하는 흐름(순전파)을 정의합니다.
-        x = self.features(x)
-        print("After features:", x.shape) # 특징 추출 후의 모양을 출력하여 확인
-
-        x = self.avgpool(x)
-        print("After avgpool:", x.shape) # 풀링 후의 모양을 출력하여 확인
-
-        x = torch.flatten(x, 1) # 2차원 이미지를 1차원 한 줄로 쭉 펼치기
-        print("After flatten:", x.shape) # 펼친 후의 모양을 출력하여 확인
-
-        x = self.classifier(x)
-        print("Output:", x.shape) # 분류기 통과 후의 모양을 출력하여 확인
-        
-        return x
-
-# === 모델 생성 및 GPU 연산 테스트 ===
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = AlexNet(num_classes=10).to(device) # 예를 들어 10개의 사물을 맞히는 모델로 설정
-
-print(f"AlexNet 모델이 다음 디바이스에 로드되었습니다: {device}")
-
-# 가짜 이미지 데이터 생성 (배치사이즈 1, RGB 3채널, 224x224 크기)
-fake_image = torch.randn(1, 3, 224, 224).to(device)
-
-# 모델에 이미지 입력 후 예측값 받아오기
-output = model(fake_image)
-
-print("\n=== 가상 이미지 통과 테스트 성공! ===")
-print("최종 출력 텐서 모양(Shape):", output.shape) # [1, 10] -> 1개 이미지에 대한 10개 클래스의 확률 점수
+if __name__ == '__main__':
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+    print(f"Using device: {device}\n")
+    
+    model = AlexNet(num_classes=10).to(device) 
+    print(f"AlexNet 모델이 생성되었습니다.\n")
+    
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001) # Adam 옵티마이저는 모델의 가중치를 업데이트하는 데 사용됩니다. 학습률(lr)은 모델이 얼마나 빠르게 학습하는지를 제어하는 하이퍼파라미터입니다. 일반적으로 0.001은 좋은 시작점입니다.
+    
+    transform = transforms.Compose([
+        transforms.ToTensor(), # 이미지를 PyTorch 텐서로 변환합니다. CIFAR-10 이미지의 픽셀 값은 0에서 255 사이이지만, ToTensor()는 이를 0에서 1 사이로 정규화하여 모델이 더 빠르게 학습할 수 있도록 돕습니다.
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) # CIFAR-10의 평균과 표준편차(Standard Deviation)로 정규화 -1 ~ 1 사이로 조정됩니다. 이는 모델이 더 빠르게 수렴하도록 돕습니다.
+    ])
+    
+    print("CIFAR-10 데이터 로딩 중...")
+    trainset = CIFAR10(root="./data", train=True, download=True, transform=transform) # CIFAR-10 데이터셋을 다운로드하고 로드합니다. root="./data"는 데이터를 저장할 디렉토리를 지정합니다. train=True는 훈련 데이터셋을 로드하겠다는 의미입니다. download=True는 데이터셋이 로컬에 없으면 다운로드하겠다는 뜻입니다. transform=transform은 앞서 정의한 변환을 적용하여 데이터를 전처리합니다.
+    trainloader = torch.utils.data.DataLoader(
+        trainset,
+        batch_size=64,
+        shuffle=True,
+        num_workers=0
+    )
+    print(f"훈련 데이터셋 크기: {len(trainset)}\n")
+    
+    print("훈련 시작...\n")
+    train_model(model, trainloader, criterion, optimizer, device, num_epochs=5)
+    
+    print("훈련 완료!")
+    
+    # 모델 저장
+    torch.save(model.state_dict(), "./model/alexnet_cifar10.pth")
+    print("모델이 저장되었습니다: ./model/alexnet_cifar10.pth")
