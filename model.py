@@ -9,18 +9,23 @@ class AlexNet(nn.Module):
         # CIFAR-10을 위해 조정된 AlexNet 아키텍처 (32x32 이미지)
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64), # 각 채널(Channel)별로 독립적으로 평균과 분산을 구함. 배치 정규화 레이어를 추가하여 학습을 안정화하고 수렴 속도를 높입니다.
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
             nn.Conv2d(64, 192, kernel_size=3, padding=1),
+            nn.BatchNorm2d(192),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
             nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.BatchNorm2d(384),
             nn.ReLU(inplace=True),
             nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
@@ -29,12 +34,12 @@ class AlexNet(nn.Module):
         
         self.classifier = nn.Sequential(
             nn.Dropout(p=0.5),
-            nn.Linear(256 * 2 * 2, 4096),
+            nn.Linear(256 * 2 * 2, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
-            nn.Linear(4096, 1024),
+            nn.Linear(512, 256),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, num_classes),
+            nn.Linear(256, num_classes),
         )
 
     def forward(self, x):
